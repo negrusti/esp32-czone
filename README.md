@@ -77,6 +77,52 @@ this firmware.
   stored in NVS.
 - **USB terminal** — local relay control and diagnostics.
 
+## Install (flash a release)
+
+Download the binaries for the latest version from the
+[Releases page](https://github.com/negrusti/esp32-czone/releases).
+
+Flashing uses Espressif's **esptool**, which requires **Python 3**:
+
+```bash
+pip install esptool
+```
+
+(Or `pipx install esptool`; or grab a standalone `esptool` binary from the
+[esptool releases](https://github.com/espressif/esptool/releases) and drop the
+`.py` from the commands below. On newer esptool the command is `esptool`; on
+older it is `esptool.py` — both forms work in recent versions.)
+
+**Full install** — blank chip or clean reflash. Writes bootloader + partition
+table + application as one image at offset `0x0`:
+
+```bash
+esptool.py --chip esp32s3 write_flash 0x0 esp32-czone-v0.1.0-factory.bin
+```
+
+**Application-only update** — keep the stored config, NVS dipswitch and SPIFFS;
+write just the app at `0x10000`:
+
+```bash
+esptool.py --chip esp32s3 write_flash 0x10000 esp32-czone-v0.1.0-app.bin
+```
+
+Notes:
+
+- Replace `v0.1.0` with the version you downloaded.
+- Add `--port COM7` (Windows) or `--port /dev/cu.usbmodemXXXX` (macOS/Linux) if
+  esptool does not auto-detect the board. It uses the ESP32-S3 native
+  USB-Serial/JTAG (`VID:PID 303A:1001`) and resets into the app automatically —
+  no buttons needed. If it cannot connect, hold **BOOT**, tap **RESET**, release
+  BOOT, then retry.
+- After flashing, open the serial port at 115200 and type `help` to confirm.
+- Verify downloads if you wish: `shasum -a 256 -c SHA256SUMS.txt` (macOS/Linux)
+  or `certutil -hashfile <file> SHA256` (Windows).
+- A browser flasher ([esptool-js](https://espressif.github.io/esptool-js/),
+  Chrome/Edge) can flash `factory.bin` at `0x0` with no install — but afterwards
+  click **Disconnect** (or close the tab) and replug the cable, otherwise the
+  serial port stays locked.
+
 ## Build
 
 Uses [PlatformIO](https://platformio.org/) with the native **ESP-IDF** framework
@@ -109,11 +155,7 @@ publishes:
 - `…-factory.bin` — full image for a blank chip, flash at `0x0`.
 - `…-app.bin` — application only, flash at `0x10000` to update a provisioned board.
 
-Flash a release factory image:
-
-```bash
-esptool.py --chip esp32s3 write_flash 0x0 esp32-czone-vX.Y.Z-factory.bin
-```
+See [Install (flash a release)](#install-flash-a-release) for how to flash them.
 
 ## USB terminal
 
