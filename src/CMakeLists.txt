@@ -1,0 +1,18 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "board.c"
+        "i2c_bus.c"
+        "tca9554.c"
+        "relay_controller.c"
+        "digital_inputs.c"
+        "czone_can.c"
+        "czone_protocol.c"
+        "usb_terminal.c"
+        "zcf_store.c"
+        "zcf_config.c"
+        "device_config.c"
+    INCLUDE_DIRS
+        "."
+        "../include"
+)

@@ -1,0 +1,10 @@
+archive/
+.claude/
+.pio/
+data/
+*.pcapng
+*.log
+include/czone_firmware_version.h
+sdkconfig.*
+!sdkconfig.defaults
+zcfupload.md

@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PIO_ENV: waveshare_esp32s3_poe_8di_8ro
+
+jobs:
+  release:
+    name: Build and publish release firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'sdkconfig.defaults', 'dependencies.lock') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO + esptool
+        run: pip install -U platformio esptool
+
+      - name: Build
+        run: pio run -e "$PIO_ENV"
+
+      - name: Package release binaries
+        run: |
+          set -euo pipefail
+          BUILD=".pio/build/$PIO_ENV"
+          VER="${GITHUB_REF_NAME}"
+          OUT="release"
+          mkdir -p "$OUT"
+
+          cp "$BUILD/firmware.bin"   "$OUT/esp32-czone-$VER-app.bin"
+          cp "$BUILD/bootloader.bin" "$OUT/bootloader.bin"
+          cp "$BUILD/partitions.bin" "$OUT/partitions.bin"
+
+          # Single-file factory image for a fresh chip (flash the whole thing at 0x0).
+          # ESP32-S3 second-stage bootloader lives at offset 0x0.
+          esptool.py --chip esp32s3 merge_bin \
+            -o "$OUT/esp32-czone-$VER-factory.bin" \
+            --flash_mode dio --flash_size 8MB --flash_freq 80m \
+            0x0     "$BUILD/bootloader.bin" \
+            0x8000  "$BUILD/partitions.bin" \
+            0x10000 "$BUILD/firmware.bin"
+
+          ( cd "$OUT" && sha256sum * > SHA256SUMS.txt )
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          body: |
+            Firmware build for the Waveshare `ESP32-S3-POE-ETH-8DI-8RO` board.
+
+            - **`esp32-czone-${{ github.ref_name }}-factory.bin`** — full image for a blank chip; flash at offset `0x0`:
+              `esptool.py --chip esp32s3 write_flash 0x0 esp32-czone-${{ github.ref_name }}-factory.bin`
+            - **`esp32-czone-${{ github.ref_name }}-app.bin`** — application only; flash at `0x10000` to update an already-provisioned board.
+
+            > Unofficial, community firmware. Not affiliated with or endorsed by BEP Marine / Power Products LLC. See the README disclaimer.
