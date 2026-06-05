@@ -8,7 +8,10 @@
 #define CZONE_DEVICE_NAME              "ESP32-CZone-Relay"
 #define CZONE_DEVICE_PREFERRED_ADDRESS 200
 #define CZONE_DEVICE_DIPSWITCH         0x18
-#define CZONE_DEVICE_MODULE_TYPE       0xFD
+// CZone module type (tModuleType). 28 = "Control 1" (a basic output/control
+// module, the simpler sibling of COI=31) -- a good fit for an 8-relay board.
+// Declared in the CZone status PGN 65284 byte[3].
+#define CZONE_DEVICE_MODULE_TYPE       28
 
 // Set to 0 to derive a stable 21-bit N2K identity from the ESP32 factory eFuse MAC.
 #define CZONE_DEVICE_IDENTITY_NUMBER   0
