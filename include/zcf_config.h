@@ -43,6 +43,13 @@ size_t zcf_config_mapping_count(void);
  * outputs). */
 uint8_t zcf_config_relays_for_circuit(uint16_t circuit_id, uint8_t *channels, uint8_t max);
 
+/* Inverse of the internal channel->relay map: return the raw output channel
+ * (the low byte of a channelAddress) that the given 1-based relay/DC output
+ * occupies on this module, or 0xFF if `relay` is out of range. Mirrors the
+ * tool's GetChannelString() numbering for our module type, so status reported at
+ * switch[channel] lines up with how the MFD looks up a circuit's output. */
+uint8_t zcf_config_channel_for_relay(uint8_t relay);
+
 /* Read back the i-th mapping entry (for diagnostics / terminal dump). The name
  * pointers reference internal storage valid until the next zcf_config_load().
  * Any out-pointer may be NULL. Returns false when `index` is out of range. */

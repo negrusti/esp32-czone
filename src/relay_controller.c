@@ -3,6 +3,8 @@
 
 #include "relay_controller.h"
 
+#include <stdio.h>
+
 #include "board.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -17,9 +19,30 @@ static uint8_t s_relay_mask;
 
 static esp_err_t relay_write_locked(uint8_t mask)
 {
+    const uint8_t prev = s_relay_mask;
     ESP_RETURN_ON_ERROR(tca9554_write_outputs(mask), TAG, "write relay output mask");
     s_relay_mask = mask;
-    ESP_LOGI(TAG, "relay mask set to 0x%02x", s_relay_mask);
+
+    const uint8_t changed = (uint8_t)(prev ^ mask);
+    if (changed == 0) {
+        ESP_LOGI(TAG, "relay mask unchanged at 0x%02x", mask);
+        return ESP_OK;
+    }
+
+    /* List which relays flipped so a single command is easy to read in the log. */
+    char buf[96];
+    size_t n = 0;
+    const char *sep = "";
+    for (uint8_t i = 0; i < BOARD_RELAY_COUNT && n < sizeof(buf); ++i) {
+        if (changed & (uint8_t)(1U << i)) {
+            const bool on = (mask & (uint8_t)(1U << i)) != 0;
+            n += (size_t)snprintf(buf + n, sizeof(buf) - n, "%srelay %u %s",
+                                  sep, (unsigned)(i + 1U), on ? "ON" : "OFF");
+            sep = ", ";
+        }
+    }
+
+    ESP_LOGI(TAG, "%s (mask 0x%02x -> 0x%02x)", buf, prev, mask);
     return ESP_OK;
 }
 

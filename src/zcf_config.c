@@ -192,6 +192,24 @@ static uint8_t relay_for_channel(uint16_t channel_address)
     return 0;
 }
 
+uint8_t zcf_config_channel_for_relay(uint8_t relay)
+{
+    if (relay < 1 || relay > BOARD_RELAY_COUNT) {
+        return 0xFF;
+    }
+
+    if (CZONE_DEVICE_MODULE_TYPE == 28 || CZONE_DEVICE_MODULE_TYPE == 31) {
+        /* Control 1 / COI: DC1..DC4 -> channels 12..15, DC5..DC8 -> channels 0..3. */
+        if (relay <= 4) {
+            return (uint8_t)(relay + 11);   /* 1->12 .. 4->15 */
+        }
+        return (uint8_t)(relay - 5);        /* 5->0 .. 8->3 */
+    }
+
+    /* Output Interface (type 15) and similar: DC n maps 1:1 to channel n-1. */
+    return (uint8_t)(relay - 1);
+}
+
 /*
  * Walk `count` control records in buf[start..end). Each record:
  *   circuitId(1) headerFields(3 x u16) lengthOfCircuitName(1) circuitName(N)

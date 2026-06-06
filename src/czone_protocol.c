@@ -69,7 +69,10 @@ static const char *TAG = "czone_pgn";
 #define CZONE_SS_CMD_PRESS_ALT      0xf2U
 #define CZONE_SS_CMD_RELEASE        0x40U
 #define CZONE_OI_STATUS_PAGE        0x01U
-#define CZONE_OI_STATUS_RECORDS     6U
+/* One status record per relay/DC output. A Control 1 (module type 28) has eight
+ * DC outputs, so report all BOARD_RELAY_COUNT of them (was hardcoded to 6, the
+ * DC count of an Output Interface). */
+#define CZONE_OI_STATUS_RECORDS     BOARD_RELAY_COUNT
 #define CZONE_OI_STATUS_RECORD_LEN  3U
 #define PROTOCOL_NOTIFY_ZCF_SEND    (1UL << 0)
 
@@ -156,7 +159,7 @@ static const uint32_t s_rx_pgns[] = {
 
 static esp_err_t send_pgn_lists(void);
 static esp_err_t send_heartbeat(void);
-static esp_err_t send_czone_module_status(uint32_t module_specific_bits);
+static esp_err_t send_czone_module_status(uint8_t relay_mask);
 static esp_err_t send_czone_oi_status(uint8_t relay_mask);
 static esp_err_t send_switch_bank_status(uint8_t relay_mask);
 static esp_err_t send_czone_zcf_size_claim(size_t file_size);
@@ -583,7 +586,7 @@ static esp_err_t send_address_claim(void)
 {
     uint8_t payload[8];
     write_u64_le(payload, s_n2k_name);
-    ESP_LOGI(TAG, "claiming N2K address %u NAME=0x%08lx%08lx",
+    ESP_LOGD(TAG, "claiming N2K address %u NAME=0x%08lx%08lx",
              s_source_address, (uint32_t)(s_n2k_name >> 32), (uint32_t)s_n2k_name);
     return send_pgn(PGN_ISO_ADDRESS_CLAIM, payload, sizeof(payload));
 }
@@ -859,10 +862,29 @@ static void build_switch_bank_status(uint8_t relay_mask, uint8_t payload[8])
     memset(payload, 0, 8);
     payload[0] = 0;
 
+    /* Map relays onto their output-channel positions; channels not driven by this
+     * module are reported as unavailable (0b11), matching how a consumer indexes
+     * switch state by output channel. */
+    uint32_t on_bits = 0;
+    uint32_t present_bits = 0;
+    for (uint8_t r = 1; r <= BOARD_RELAY_COUNT; ++r) {
+        const uint8_t ch = zcf_config_channel_for_relay(r);
+        if (ch >= SWITCHES_PER_BANK) {
+            continue;
+        }
+        present_bits |= (uint32_t)1U << ch;
+        if (relay_mask & (uint8_t)(1U << (r - 1U))) {
+            on_bits |= (uint32_t)1U << ch;
+        }
+    }
+
     for (uint8_t sw = 0; sw < SWITCHES_PER_BANK; ++sw) {
-        const uint8_t bits = sw < BOARD_RELAY_COUNT
-            ? ((relay_mask & (uint8_t)(1U << sw)) ? 1U : 0U)
-            : 3U;
+        uint8_t bits;
+        if (present_bits & ((uint32_t)1U << sw)) {
+            bits = (on_bits & ((uint32_t)1U << sw)) ? 1U : 0U;
+        } else {
+            bits = 3U; /* unavailable */
+        }
         payload[1 + sw / 4] |= (uint8_t)(bits << ((sw % 4) * 2));
     }
 }
@@ -911,16 +933,37 @@ static esp_err_t send_heartbeat(void)
     return send_pgn(PGN_HEARTBEAT, payload, sizeof(payload));
 }
 
-static esp_err_t send_czone_module_status(uint32_t module_specific_bits)
+/* Convert an 8-bit physical relay mask (bit i = relay i+1) into the 32-bit
+ * channel-indexed field used by CZone status PGNs: bit N reflects the state of
+ * output channel N. Consumers (MFDs) look up a circuit's output channelAddress
+ * and read switch[channel], so status must be keyed by channel, not by relay/DC
+ * index, or the wrong button reflects a given relay. */
+static uint32_t relay_mask_to_channel_bits(uint8_t relay_mask)
 {
+    uint32_t bits = 0;
+    for (uint8_t r = 1; r <= BOARD_RELAY_COUNT; ++r) {
+        if ((relay_mask & (uint8_t)(1U << (r - 1U))) == 0) {
+            continue;
+        }
+        const uint8_t ch = zcf_config_channel_for_relay(r);
+        if (ch < 32U) {
+            bits |= (uint32_t)1U << ch;
+        }
+    }
+    return bits;
+}
+
+static esp_err_t send_czone_module_status(uint8_t relay_mask)
+{
+    const uint32_t channel_bits = relay_mask_to_channel_bits(relay_mask);
     uint8_t payload[8] = {0};
     write_u16_le(payload, czone_vendor_header());
     payload[2] = device_config_get_dipswitch();
     payload[3] = CZONE_DEVICE_MODULE_TYPE;
-    payload[4] = (uint8_t)(module_specific_bits & 0xffU);
-    payload[5] = (uint8_t)((module_specific_bits >> 8) & 0xffU);
-    payload[6] = (uint8_t)((module_specific_bits >> 16) & 0xffU);
-    payload[7] = (uint8_t)((module_specific_bits >> 24) & 0xffU);
+    payload[4] = (uint8_t)(channel_bits & 0xffU);
+    payload[5] = (uint8_t)((channel_bits >> 8) & 0xffU);
+    payload[6] = (uint8_t)((channel_bits >> 16) & 0xffU);
+    payload[7] = (uint8_t)((channel_bits >> 24) & 0xffU);
     return send_pgn_priority(PGN_CZONE_STATUS, 7, payload, sizeof(payload));
 }
 
