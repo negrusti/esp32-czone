@@ -156,6 +156,42 @@ static void lookup_load_name(const uint8_t *buf, uint16_t channel_address, char 
     }
 }
 
+/* Return the 1-based DC output (relay) number for an output channelAddress, or
+ * 0 if the channel is not one of our module's DC outputs.
+ *
+ * This mirrors the CZone configuration tool's GetChannelString(): the DC number
+ * is derived directly from the output-channel value (the low byte of the
+ * channelAddress) and the mapping is module-type specific -- it is NOT the load
+ * definition order. For a Control 1 / COI (module types 28 / 31) the eight DC
+ * outputs occupy two channel ranges:
+ *     channel 12..15  ->  DC1..DC4
+ *     channel  0.. 3  ->  DC5..DC8
+ * so e.g. channel 12 is DC1 and channel 0 is DC5. */
+static uint8_t relay_for_channel(uint16_t channel_address)
+{
+    if ((channel_address >> 8) != device_config_get_dipswitch()) {
+        return 0;
+    }
+    const uint8_t ch = (uint8_t)(channel_address & 0xFF);
+
+    if (CZONE_DEVICE_MODULE_TYPE == 28 || CZONE_DEVICE_MODULE_TYPE == 31) {
+        /* Control 1 / COI. */
+        if (ch >= 12 && ch < 16) {
+            return (uint8_t)(ch - 11);   /* 12->1 .. 15->4 */
+        }
+        if (ch < 4) {
+            return (uint8_t)(ch + 5);    /* 0->5 .. 3->8 */
+        }
+        return 0;
+    }
+
+    /* Output Interface (type 15) and similar: DC1..DCn map 1:1 to channels. */
+    if (ch < BOARD_RELAY_COUNT) {
+        return (uint8_t)(ch + 1);
+    }
+    return 0;
+}
+
 /*
  * Walk `count` control records in buf[start..end). Each record:
  *   circuitId(1) headerFields(3 x u16) lengthOfCircuitName(1) circuitName(N)
@@ -204,11 +240,11 @@ static bool parse_control_records(const uint8_t *buf, size_t start, size_t end, 
                 const uint16_t channel_address = rd_u16(&buf[ec]);
                 const uint32_t packed = rd_u24(&buf[ec + 2]);
                 if ((channel_address >> 8) == device_config_get_dipswitch()) {
-                    const uint8_t output_channel = (uint8_t)(channel_address & 0xFF);
-                    if (output_channel < BOARD_RELAY_COUNT && s_map_count < ZCF_MAP_MAX) {
+                    const uint8_t relay = relay_for_channel(channel_address);
+                    if (relay != 0 && s_map_count < ZCF_MAP_MAX) {
                         zcf_map_entry_t *e = &s_map[s_map_count];
                         e->circuit_id = circuit_id;
-                        e->relay_channel = (uint8_t)(output_channel + 1U);
+                        e->relay_channel = relay;
                         e->level = (uint16_t)(packed & 0x3FF);
                         copy_name(e->circuit_name, &buf[name_off], name_len);
                         lookup_load_name(buf, channel_address, e->load_name);
