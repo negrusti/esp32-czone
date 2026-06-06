@@ -140,23 +140,6 @@ Flash & monitor:
 pio device monitor --port COM7
 ```
 
-### Versioning
-
-`VERSION` holds the semantic version (`MAJOR.MINOR.PATCH`).
-`scripts/generate_version_header.py` runs before each build and writes
-`include/czone_firmware_version.h`, which fills the NMEA 2000 software-version
-field reported in Product Information.
-
-### Releases
-
-Pushing a tag like `v0.1.0` triggers the **Release** workflow, which builds and
-publishes:
-
-- `…-factory.bin` — full image for a blank chip, flash at `0x0`.
-- `…-app.bin` — application only, flash at `0x10000` to update a provisioned board.
-
-See [Install (flash a release)](#install-flash-a-release) for how to flash them.
-
 ## USB terminal
 
 The firmware exposes a terminal on the ESP32-S3 native USB port (same port as the
