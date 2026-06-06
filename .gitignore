@@ -1,7 +1,6 @@
 archive/
 .claude/
 .pio/
-data/
 *.pcapng
 *.log
 include/czone_firmware_version.h
